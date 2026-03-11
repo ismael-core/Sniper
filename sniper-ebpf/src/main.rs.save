@@ -1,0 +1,36 @@
+#![no_std]
+#![no_main]
+
+use aya_ebpf::{
+    bindings::xdp_action,
+    macros::xdp,
+    programs::XdpContext,
+};
+use aya_log_ebpf::info;
+
+const TCP: u8 = 6;
+
+#[xdp]
+pub fn sniper(ctx: XdpContext) -> u32 {
+    match operaciones_sniper(&ctx) {
+        Ok(ret) => ret,
+        Err(_) => xdp_action::XDP_ABORTED,
+    }
+}
+
+fn operaciones_sniper(ctx: &XdpContext) -> Result<u32, ()> {
+    let data = ctx.data();
+    let data_end = ctx.data_end();
+
+    // ==========================================
+    // ☢️ ZONA DE OPERACIONES (TU CÓDIGO AQUÍ) ☢️
+    // ==========================================
+if (data + 38) > data_end { 
+   return Ok(xdp_action::XDP_PASS);
+let puerto = unsafe {*((data + 36 ) as *const u16)};
+info!(&ctx,"PUERTO ENCONTRADO : 
+
+#[panic_handler]
+fn panic(_info: &core::panic::PanicInfo) -> ! {
+    unsafe { core::hint::unreachable_unchecked() }
+}
