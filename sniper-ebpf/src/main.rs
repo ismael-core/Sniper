@@ -14,7 +14,7 @@ pub struct EthHdr {
     pub ether_type: u16,  // 16 bits (Protocol Type: IPv4, IPv6, ARP, etc.)
 }
 #[repr(C)]
-pub struct Ipv4Hdr {
+pub struct Ipv4Hdr { 
     pub v_ihl: u8,       // 8 bits (Version 4 + IHL 4)
     pub tos: u8,         // 8 bits (Type of Service)
     pub tot_len: u16,    // 16 bits (Total Length)
@@ -27,7 +27,7 @@ pub struct Ipv4Hdr {
     pub dst_ip: u32,     // 32 bits (Destination Address)
 }
 #[repr(C)]
-pub struct TcpHdr {
+pub struct TcpHdr { 
     pub source: u16,      // 16 bits (Source Port)
     pub dest_port: u16,   // 16 bits (Destination Port - NUESTRO TARGET)
     pub seq: u32,         // 32 bits (Sequence Number)
@@ -45,7 +45,54 @@ pub struct UdpHdr {
     pub len: u16,         // 16 bits (Length of UDP header + data)
     pub check: u16,       // 16 bits (Checksum)
 }
- 
+
+// ═══════════════════════════════════════════
+// ETHER TYPES (Layer 2 → Layer 3)
+// ═══════════════════════════════════════════
+const ETH_P_IPV4:  u16 = 0x0800;   // IPv4
+const ETH_P_IPV6:  u16 = 0x86DD;   // IPv6
+const ETH_P_ARP:   u16 = 0x0806;   // ARP (Address Resolution Protocol)
+
+// ═══════════════════════════════════════════
+// IP PROTOCOLS (Layer 3 → Layer 4)
+// ═══════════════════════════════════════════
+const IPPROTO_TCP:  u8 = 6;    // TCP
+const IPPROTO_UDP:  u8 = 17;   // UDP
+const IPPROTO_ICMP: u8 = 1;    // ICMP (ping)
+
+// ═══════════════════════════════════════════
+// TCP/UDP PORTS (Layer 4 → Services)
+// ═══════════════════════════════════════════
+// Web
+const PORT_HTTP:       u16 = 80;
+const PORT_HTTPS:      u16 = 443;
+
+// Remote Access
+const PORT_SSH:        u16 = 22;
+const PORT_RDP:        u16 = 3389;   // Remote Desktop
+
+// DNS
+const PORT_DNS:        u16 = 53;
+
+// Mail
+const PORT_SMTP:       u16 = 25;     // Email sending
+const PORT_IMAP:       u16 = 143;    // Email reading
+const PORT_IMAPS:      u16 = 993;    // Email reading (encrypted)
+
+// Database
+const PORT_MYSQL:      u16 = 3306;
+const PORT_POSTGRES:   u16 = 5432;
+const PORT_REDIS:      u16 = 6379;
+const PORT_MONGODB:    u16 = 27017;
+
+// Infrastructure
+const PORT_FTP:        u16 = 21;
+const PORT_TELNET:     u16 = 23;     // Insecure, always block
+const PORT_NTP:        u16 = 123;    // Time sync
+const PORT_SNMP:       u16 = 161;    // Network monitoring
+const PORT_BGP:        u16 = 179;    // Border Gateway Protocol
+const PORT_LDAP:       u16 = 389;    // Directory services
+
 #[xdp]
 pub fn sniper(ctx: XdpContext) -> u32 {
     match sniper_operations(&ctx) {
@@ -57,21 +104,12 @@ pub fn sniper(ctx: XdpContext) -> u32 {
 fn sniper_operations(ctx: &XdpContext) -> Result<u32, ()> {
     let data = ctx.data();
     let data_end = ctx.data_end();
-
-const HTTP_PORT:u16 = 80;
-if (data + 38) >  data_end {
-    return Ok(xdp_action::XDP_PASS)
+    return Ok(xdp_action::XDP_PASS);
 }
-let port = unsafe { u16::from_be(*((data + 36) as *const u16))};
 
-if port == HTTP_PORT{
-   info!(&ctx, "ENEMY AT PORT ({}) HAS BEEN BLOCKED", HTTP_PORT);
-   return Ok(xdp_action::XDP_DROP);
-} 
-return Ok(xdp_action::XDP_PASS);
-}
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     unsafe { core::hint::unreachable_unchecked() }
 }
+
 
