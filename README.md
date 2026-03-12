@@ -33,3 +33,19 @@ Instead of blindly guessing byte positions, I mapped out the actual protocol hea
   * `TcpHdr` (20 bytes) & `UdpHdr` (8 bytes): The actual targets. No more guessing; now I have exact molds to read specific ports (like targeting port 80).
 
 **Next steps:** With these blueprints ready, tomorrow I'm ripping out the old pointer arithmetic in `sniper_operations` and replacing it with safe struct casting. Time to make the sniper actually use these scopes.
+---
+
+## Dev Log: Phase 2.5 – Constants & Cleanup
+
+Stopped coding for a sec and reviewed everything I had so far line by line. Wanted to make sure I wasn't just writing stuff that works without knowing why it works. Glad I did — caught a few gaps in my understanding around `no_main` and how the entry point actually gets called by the kernel.
+
+Set up all the protocol constants I'll need: ether types, IP protocol numbers, and a bunch of well-known ports (HTTP, HTTPS, SSH, DNS, databases, etc). It's just reference values but having them named and organized at the top beats writing magic numbers everywhere.
+
+Gutted `sniper_operations` completely. The old logic with `data + 36` and `data + 38` worked but it was fragile. Starting fresh with struct-based parsing using `size_of` to calculate offsets automatically.
+
+### What changed:
+* Added constants for ether types (IPv4, IPv6, ARP), protocols (TCP, UDP, ICMP), and ~15 common ports
+* Stripped the old manual offset logic out of `sniper_operations`
+* Picked up the `&*` zero-copy casting pattern for reading packet headers without copying bytes around
+
+**Next:** Full layer-by-layer parsing inside `sniper_operations` — Ethernet → IPv4 → TCP/UDP using the structs instead of hardcoded offsets.
