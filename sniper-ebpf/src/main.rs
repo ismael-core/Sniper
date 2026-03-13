@@ -100,16 +100,49 @@ pub fn sniper(ctx: XdpContext) -> u32 {
         Err(_) => xdp_action::XDP_ABORTED,
     }
 }
-
 fn sniper_operations(ctx: &XdpContext) -> Result<u32, ()> {
     let data = ctx.data();
-    let data_end = ctx.data_end();
+    let data_end = ctx.data_end();   
+if data + 14 > data_end { 
+    return Ok(xdp_action::XDP_PASS);
+    }
+let eth = unsafe {&*(data as *const EthHdr)};
+let  next_prot = u16::from_be(eth.ether_type);
+if next_prot != ETH_P_IPV4 {
     return Ok(xdp_action::XDP_PASS);
 }
-
+if data + 34 > data_end {
+   return Ok(xdp_action::XDP_PASS);
+}
+let ipv4 = unsafe {&*((data +14) as *const Ipv4Hdr)};
+let second_prot =  ipv4.prot;
+if second_prot == IPPROTO_TCP {
+    if data + 54 > data_end {
+        return Ok(xdp_action::XDP_PASS);
+    }
+    let tcp = unsafe {&*((data + 34) as *const TcpHdr)};
+    let tcp_port = u16::from_be(tcp.dest_port);
+    if tcp_port == PORT_HTTP {
+        return Ok(xdp_action::XDP_DROP);
+    }
+} else if second_prot == IPPROTO_UDP {
+    if data + 42 > data_end {
+        return Ok(xdp_action::XDP_PASS);
+    }
+    let udp = unsafe {&*((data + 34) as *const UdpHdr)};
+    let udp_port = u16::from_be(udp.dest_port);
+    if udp_port == PORT_HTTP {
+        return Ok(xdp_action::XDP_DROP);
+    }
+} else {
+    return Ok(xdp_action::XDP_PASS);
+}
+return Ok(xdp_action::XDP_PASS);
+}
 #[panic_handler]
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     unsafe { core::hint::unreachable_unchecked() }
 }
+
 
 
