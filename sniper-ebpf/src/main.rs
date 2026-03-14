@@ -122,18 +122,34 @@ if second_prot == IPPROTO_TCP {
     }
     let tcp = unsafe {&*((data + 34) as *const TcpHdr)};
     let tcp_port = u16::from_be(tcp.dest_port);
-    if tcp_port == PORT_HTTP {
-        return Ok(xdp_action::XDP_DROP);
+    match tcp_port {
+    PORT_MYSQL|PORT_POSTGRES|PORT_REDIS|PORT_MONGODB|PORT_TELNET|PORT_FTP|PORT_BGP|PORT_LDAP => {
+    let b1 = ipv4.src_ip & 0xFF;
+    let b2 = (ipv4.src_ip >> 8) & 0xFF;
+    let b3 = (ipv4.src_ip >> 16) & 0xFF;
+    let b4 = (ipv4.src_ip >> 24) & 0xFF;
+    info!(&ctx,"SOMEONE FROM THE IP ({}.{}.{}.{}) TRY TO LOG IN THE PORT ({}),HE WAS KICKED",b1,b2,b3,b4,tcp_port);
+    return Ok(xdp_action::XDP_DROP);
     }
+     _ =>{}
+}
 } else if second_prot == IPPROTO_UDP {
     if data + 42 > data_end {
         return Ok(xdp_action::XDP_PASS);
     }
     let udp = unsafe {&*((data + 34) as *const UdpHdr)};
     let udp_port = u16::from_be(udp.dest_port);
-    if udp_port == PORT_HTTP {
-        return Ok(xdp_action::XDP_DROP);
+    match udp_port {
+    PORT_SNMP => {
+    let b1 = ipv4.src_ip & 0xFF;
+    let b2 = (ipv4.src_ip >> 8) & 0xFF;
+    let b3 = (ipv4.src_ip >> 16) & 0xFF;
+    let b4 = (ipv4.src_ip >> 24) & 0xFF;  
+    info!(&ctx,"SOMEONE FROM THE IP ({}.{}.{}.{}) TRY TO LOG IN THE PORT ({}),HE WAS KICKED",b1,b2,b3,b4,udp_port);
+    return Ok(xdp_action::XDP_DROP);
     }
+    _=>{}
+} 
 } else {
     return Ok(xdp_action::XDP_PASS);
 }
@@ -143,6 +159,5 @@ return Ok(xdp_action::XDP_PASS);
 fn panic(_info: &core::panic::PanicInfo) -> ! {
     unsafe { core::hint::unreachable_unchecked() }
 }
-
 
 
