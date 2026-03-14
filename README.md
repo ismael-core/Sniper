@@ -75,3 +75,60 @@ Loaded it into the kernel, verifier accepted it first try. Ran bpftool net show 
 * Zero-copy reads using &* pointer dereferencing through #[repr(C)] structs
 
 **Next:** Multi-port filtering (Telnet, FTP, databases), UDP-specific rules, and adding aya_log so I can actually see what's getting dropped in real time.
+## Dev Log: Phase 4 – Multi-Port Filtering & Live Telemetry
+
+Up until now Sniper only blocked one port — TCP 80. Today I turned it into an actual multi-port firewall with real-time logging. The program now watches for dangerous services and tells me exactly who tried to connect and where.
+
+### Choosing what to block
+
+Before writing any code I had to think about which ports actually need to be blocked and on which protocol. Not every service runs on both TCP and UDP — most database and remote access services are TCP only, while stuff like SNMP and NTP are UDP. Blocking MySQL on UDP would be a rule that never fires because MySQL traffic never goes over UDP. Wasted code.
+
+I also had to think about what’s actually dangerous to leave exposed. Database ports (MySQL 3306, PostgreSQL 5432, Redis 6379, MongoDB 27017) are probably the worst — if someone from the internet can reach your database, they have access to everything. Redis doesn’t even require a password by default. Telnet (23) and FTP (21) send everything in plaintext. BGP (179) and LDAP (389) have no business being open on a server that isn’t a router or directory service.
+
+One important thing I learned: blocking a port on eth0 doesn’t affect local traffic. Processes on the same server talk through the loopback interface (`lo`), not eth0. So my app can still use MySQL locally while the XDP program blocks anyone from the internet trying to reach port 3306.
+
+### match instead of chained if statements
+
+Rust’s `match` is way cleaner than chaining `if port == X || port == Y || port == Z`. You declare what you’re comparing once, then list the values separated by `|`:
+
+```rust
+match tcp_port {
+    PORT_MYSQL | PORT_POSTGRES | PORT_REDIS | PORT_MONGODB
+    | PORT_TELNET | PORT_FTP | PORT_BGP | PORT_LDAP => {
+        // drop
+    }
+    _ => {}  // everything else passes
+}
+```
+
+The `_` means “everything else” — Rust forces you to cover all possibilities. Inside match, `|` is a pattern separator (not the logical OR `||` from if statements). Caught a nasty bug here too: I typo’d `PORT_SNTP` instead of `PORT_SNMP` in the UDP match. Rust didn’t error — it treated it as a new variable name that catches ALL values. Would have silently dropped every UDP packet. The compiler warning about “variable should be snake_case” was the clue.
+
+### aya_log — seeing what gets dropped in real time
+
+The logging architecture has two sides. The kernel program writes to a shared buffer using `aya_log_ebpf::info!`. The userspace loader reads that buffer and prints to the terminal. The loader already had the setup code from the Aya template — I just needed to add `info!` calls in the eBPF program.
+
+The raw IP comes out as a u32 (like 2691030871) which is useless to read. To get a human-readable IP I extract each byte with bit shifts and masking:
+
+```rust
+let b1 = ipv4.src_ip & 0xFF;           // bits 0-7
+let b2 = (ipv4.src_ip >> 8) & 0xFF;    // bits 8-15
+let b3 = (ipv4.src_ip >> 16) & 0xFF;   // bits 16-23
+let b4 = (ipv4.src_ip >> 24) & 0xFF;   // bits 24-31
+```
+
+`0xFF` is a mask (11111111 in binary) that isolates 8 bits. The `>>` shift brings each byte down to the lowest position before masking. Now the logs show actual IPs.
+
+### The real internet showed up
+
+Within minutes of running the program, the logs caught a bot from a random IP trying to hit port 21 (FTP). I didn’t trigger that — it was an automated scanner just sweeping the internet looking for open FTP servers. My program blocked it and logged it. That’s exactly why multi-port filtering matters.
+
+### What changed:
+
+- Replaced single PORT_HTTP check with `match` blocks for multi-port filtering
+- TCP blocks: MySQL, PostgreSQL, Redis, MongoDB, Telnet, FTP, BGP, LDAP
+- UDP blocks: SNMP
+- Added `aya_log_ebpf::info!` logging with human-readable source IP and dest port
+- Extracted IPv4 bytes using bitwise shift and mask operations
+- Caught real bot traffic on port 21 during testing
+
+**Next:** Source port filtering, IP-based filtering, and continuing to build out the detection logic.
