@@ -132,3 +132,40 @@ Within minutes of running the program, the logs caught a bot from a random IP tr
 - Caught real bot traffic on port 21 during testing
 
 **Next:** Source port filtering, IP-based filtering, and continuing to build out the detection logic.
+---
+## Dev Log: Phase 5 – IP Filtering with CIDR & Bitwise Deep Dive
+
+Today I stopped just looking at ports and started looking at WHO is sending the traffic. Until now sniper_operations only cared about dest_port – what service you're trying to reach. Now it also checks src_ip against a network range before even looking at the protocol.
+
+### Bitwise finally clicked
+
+I went all the way down to binary. Not just "0xFF is a mask" but actually understanding why: F = 15 = 1111 in binary, so 0xFF = 11111111 = 8 bits all set to 1. AND with a mask works because 1s let bits through and 0s destroy them. That's it.
+
+The full cycle makes sense now:
+- **Building** a u32 from bytes: `<<` to place each byte in position, `|` to merge them together.
+- **Extracting** bytes from a u32: `>>` to shift the byte down to the lowest position, `& 0xFF` to clean everything else.
+
+These are inverse operations. I was using both already in my code but today I understood WHY each one works.
+
+### CIDR masking for IP ranges
+
+A single IP block is easy – just compare src_ip against a constant. But attackers come from ranges. CIDR notation like `45.33.32.0/24` means "the first 24 bits are fixed, the last 8 can be anything." That's 256 addresses.
+
+The mask for /24 is `0xFFFFFF00` – 24 ones followed by 8 zeros. To check if an IP belongs to the range:
+
+```rust
+if (u32::from_be(ipv4.src_ip) & MASK_BL_IP) == BLOCKED_IP {
+    return Ok(xdp_action::XDP_DROP);
+}
+
+Apply the mask to kill the variable bits, compare what’s left against the network address. The check goes right after the Ipv4Hdr cast and BEFORE the protocol branching – if the IP is bad, why waste cycles checking which port they’re hitting?
+Important detail: from_be has to go first, on src_ip alone. The mask is in host byte order (I defined it), but src_ip comes from the wire in network byte order. Convert first, then mask.
+Source port filtering – why I’m NOT doing it
+Source ports are ephemeral – the sender’s OS picks a random port (typically 49152-65535) for each connection. An attacker can also spoof any source port they want. Filtering incoming traffic by source port gives you zero security value. Dest port is what matters for inbound filtering. Source port only has value as telemetry data in logs.
+The bracket war
+Spent way too long debugging mismatched braces in nano. Adding the new IP check shifted lines around and I lost track of which } closed what. Lesson learned: cat -n to dump the file with line numbers is the fastest way to trace bracket issues when your editor doesn’t highlight pairs. VS Code can’t come soon enough.
+What changed:
+	∙	Added CIDR-based IP filtering with BLOCKED_IP and MASK_BL_IP constants	∙	IP check runs before protocol branching (early drop, no wasted cycles)
+	∙	Proper byte order handling: from_be before masking
+	∙	Learned binary conversion, AND masking mechanics, and the build/extract cycle for bitwise ops
+Next: Code structure – sniper_operations is getting long. Time to think about how to split it without the verifier complaining. Also want to explore eBPF maps for dynamic IP blocklists instead of hardcoded constants.
