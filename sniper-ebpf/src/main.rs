@@ -1,3 +1,4 @@
+
 #![no_std]
 #![no_main]
 
@@ -92,10 +93,12 @@ const PORT_NTP:        u16 = 123;    // Time sync
 const PORT_SNMP:       u16 = 161;    // Network monitoring
 const PORT_BGP:        u16 = 179;    // Border Gateway Protocol
 const PORT_LDAP:       u16 = 389;    // Directory services
-
+// Testing blocked_ip with mask
+const BLOCKED_IP:      u32 = 45 << 24 | 33 << 16 | 32 << 8 | 0;
+const MASK_BL_IP:      u32 = 0xFFFFFF00;
 #[xdp]
 pub fn sniper(ctx: XdpContext) -> u32 {
-    match sniper_operations(&ctx) {
+        match sniper_operations(&ctx) {
         Ok(ret) => ret,
         Err(_) => xdp_action::XDP_ABORTED,
     }
@@ -105,16 +108,18 @@ fn sniper_operations(ctx: &XdpContext) -> Result<u32, ()> {
     let data_end = ctx.data_end();   
 if data + 14 > data_end { 
     return Ok(xdp_action::XDP_PASS);
-    }
+    } 
 let eth = unsafe {&*(data as *const EthHdr)};
 let  next_prot = u16::from_be(eth.ether_type);
 if next_prot != ETH_P_IPV4 {
     return Ok(xdp_action::XDP_PASS);
-}
+    }
 if data + 34 > data_end {
    return Ok(xdp_action::XDP_PASS);
-}
+   }
 let ipv4 = unsafe {&*((data +14) as *const Ipv4Hdr)};
+if (u32::from_be(ipv4.src_ip) & MASK_BL_IP) == BLOCKED_IP {
+   return Ok(xdp_action::XDP_DROP); }
 let second_prot =  ipv4.prot;
 if second_prot == IPPROTO_TCP {
     if data + 54 > data_end {
